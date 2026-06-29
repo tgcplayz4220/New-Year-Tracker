@@ -60,6 +60,14 @@ body {
   z-index: 1;
 }
 
+#fireworkCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* everything above bg */
 .page-wrap { position: relative; z-index: 2; }
 
@@ -370,36 +378,11 @@ body {
   border-radius: 16px;
 }
 
-/* ── Debug Panel Toggle Button ── */
-.debug-toggle-btn {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 102;
-  background: #0e0d1c;
-  border: 1px solid rgba(124,111,255,0.4);
-  color: var(--text);
-  padding: 10px 16px;
-  border-radius: 12px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.15s;
-}
-.debug-toggle-btn:hover {
-  border-color: var(--accent-2);
-  box-shadow: 0 4px 25px rgba(124,111,255,0.2);
-}
-
 /* ── Debug Panel ── */
 .debug-panel {
+  display: none;
   position: fixed;
-  bottom: 80px; /* Moved higher up to prevent overlapping button */
+  bottom: 24px;
   right: 24px;
   z-index: 100;
   background: #0e0d1c;
@@ -409,8 +392,8 @@ body {
   width: 310px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(124,111,255,0.1) inset;
   backdrop-filter: blur(12px);
-  display: none; /* Controlled by toggle button */
 }
+.debug-panel.visible { display: block; }
 .debug-panel::before {
   content: '';
   position: absolute;
@@ -814,6 +797,49 @@ body {
   50%       { opacity: 0.4; transform: scale(0.7); }
 }
 
+/* ── Last-60-seconds flash ── */
+@keyframes cardFlash {
+  0%   { box-shadow: none; background: var(--bg-card); }
+  50%  { box-shadow: 0 0 0 1px rgba(255,255,255,0.25), inset 0 0 30px rgba(255,255,255,0.06); background: rgba(255,255,255,0.04); }
+  100% { box-shadow: none; background: var(--bg-card); }
+}
+.zone-card.state-final {
+  animation: cardFlash 1s ease-in-out infinite;
+  border-color: rgba(255,255,255,0.2) !important;
+}
+.zone-card.state-final::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ── Final-minute alert toast ── */
+.final-alert {
+  position: fixed;
+  top: 20px; left: 50%; transform: translateX(-50%);
+  z-index: 200;
+  background: rgba(15,14,26,0.92);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  padding: 10px 20px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--text-2);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  white-space: nowrap;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.3s;
+}
+.final-alert.visible { opacity: 1; pointer-events: auto; }
+.final-alert-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #fff;
+  flex-shrink: 0;
+  animation: pulse 1s ease-in-out infinite;
+}
+.final-alert b { color: var(--text); }
+
 .empty-msg {
   grid-column: 1/-1; text-align: center;
   padding: 3rem; color: var(--text-3); font-size: 14px;
@@ -844,6 +870,7 @@ body {
 
 <canvas id="starCanvas"></canvas>
 <canvas id="shootCanvas"></canvas>
+<canvas id="fireworkCanvas"></canvas>
 
 <div class="page-wrap">
 
@@ -955,6 +982,7 @@ body {
   <button class="filter-btn"        id="btnDone"    onclick="setFilter('done')">Celebrated ✓</button>
   <button class="filter-btn"        id="btnPending" onclick="setFilter('pending')">Upcoming</button>
   <button class="filter-btn"        id="btnSoon"    onclick="setFilter('soon')">Within 1 hr</button>
+  <button class="filter-btn"        id="btnDebug"   onclick="toggleDebugPanel()">Debug Panel</button>
 </div>
 
 <div class="stats-row" id="statsRow"></div>
@@ -964,13 +992,14 @@ body {
   Tracking <span>38 UTC offsets</span> · UTC+14 → UTC−12 · Updates every second
 </div>
 
+<!-- FINAL MINUTE ALERT -->
+<div class="final-alert" id="finalAlert">
+  <span class="final-alert-dot"></span>
+  <span><b id="finalAlertName">—</b> hits midnight in <b id="finalAlertSecs">—</b>s</span>
+</div>
+
 <!-- SIM ACTIVE BADGE -->
 <div class="sim-badge" id="simBadge">⚡ SIM ACTIVE</div>
-
-<!-- DEBUG PANEL TOGGLE BUTTON -->
-<button class="debug-toggle-btn" id="debugToggleBtn" onclick="toggleDebugPanel()">
-  🛠️ Debug Panel
-</button>
 
 <!-- DEBUG PANEL -->
 <div class="debug-panel" id="debugPanel">
@@ -1003,6 +1032,8 @@ body {
       <button class="speed-btn" onclick="setSpeed(28800)">28800×</button>
       <button class="speed-btn" onclick="setSpeed(43200)">43200×</button>
       <button class="speed-btn" onclick="setSpeed(86400)">86400×</button>
+      <button class="speed-btn" onclick="setSpeed(172800)">172800×</button>
+      <button class="speed-btn" onclick="setSpeed(604800)">604800×</button>
     </div>
 
     <div class="sim-offset-row">
@@ -1105,11 +1136,58 @@ body {
 })();
 
 /* ═══════════════════════════════
+   FIREWORKS
+═══════════════════════════════ */
+const fireworkShow = (() => {
+  const c = document.getElementById('fireworkCanvas');
+  const ctx = c.getContext('2d');
+  let sparks = [];
+  let activeUntil = 0;
+  function resize() { c.width = window.innerWidth; c.height = window.innerHeight; }
+  function burst() {
+    const x = Math.random() * c.width * 0.8 + c.width * 0.1;
+    const y = Math.random() * c.height * 0.45 + c.height * 0.12;
+    const hue = Math.floor(Math.random() * 360);
+    for (let i = 0; i < 70; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = Math.random() * 4 + 1.5;
+      sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0, maxLife: Math.random() * 45 + 35, hue });
+    }
+  }
+  function start() {
+    activeUntil = performance.now() + 5000;
+    for (let i = 0; i < 4; i++) setTimeout(burst, i * 250);
+  }
+  function draw() {
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (performance.now() < activeUntil && Math.random() < 0.06) burst();
+    sparks = sparks.filter(s => s.life < s.maxLife);
+    sparks.forEach(s => {
+      s.life++;
+      s.vy += 0.035;
+      s.x += s.vx;
+      s.y += s.vy;
+      const alpha = 1 - s.life / s.maxLife;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${s.hue}, 95%, 68%, ${alpha.toFixed(2)})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+  requestAnimationFrame(draw);
+  return { start };
+})();
+
+/* ═══════════════════════════════
    CARD SPARKLES (canvas per card)
 ═══════════════════════════════ */
 const cardParticles = new Map();
 
 function initCardSparkle(canvas, color) {
+  if (cardParticles.has(canvas)) cancelAnimationFrame(cardParticles.get(canvas));
   const ctx = canvas.getContext('2d');
   const particles = [];
   function emit() {
@@ -1140,9 +1218,9 @@ function initCardSparkle(canvas, color) {
       ctx.fill();
       if (p.life >= p.maxLife) particles.splice(i, 1);
     }
-    return requestAnimationFrame(draw);
+    cardParticles.set(canvas, requestAnimationFrame(draw));
   }
-  return draw();
+  draw();
 }
 
 /* ═══════════════════════════════
@@ -1189,35 +1267,39 @@ const ZONES = [
   { utcOffset: -12,   label: "UTC−12",    name: "Baker Island, Howland Island" },
 ];
 
-/* ── SIMULATED CLOCK ENGINE ── */
-let _simSpeed       = 1;
-let _simStartReal   = Date.now();
-let _simStartVirtual= Date.now();
-let _simBaselineReal= Date.now();
+/* ═══════════════════════════════
+   SIMULATED CLOCK ENGINE
+   simNow() returns a simulated ms timestamp.
+   Everything that previously called Date.now() or new Date()
+   now calls simNow() instead.
+═══════════════════════════════ */
+let _simSpeed       = 1;          // multiplier
+let _simStartReal   = Date.now(); // real time when sim started
+let _simStartVirtual= Date.now(); // virtual time at sim start
+let _simOffset      = 0;          // total accumulated virtual offset in ms
 
 function simNow() {
-  if (_simSpeed === 1) {
-    // Keep perfectly synced to real time if multiplier is 1x so it doesn't drift or add fake offset
-    return _simStartVirtual + (Date.now() - _simStartReal);
-  }
   const realElapsed = Date.now() - _simStartReal;
   return _simStartVirtual + realElapsed * _simSpeed;
 }
 
 function setSpeed(x) {
+  // Snapshot current virtual time so we don't jump
   _simStartVirtual = simNow();
   _simStartReal    = Date.now();
   _simSpeed        = x;
+  _simOffset       = _simStartVirtual - _simStartReal;
 
+  // UI
   document.getElementById('simSpeedLabel').textContent = x + '×';
   document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
-  const speeds = [1,2,5,10,30,60,120,300,600,1800,3600,7200,14400,28800,43200,86400];
+  const speeds = [1,2,5,10,30,60,120,300,600,1800,3600,7200,14400,28800,43200,86400,172800,604800];
   const idx = speeds.indexOf(x);
   if (idx >= 0) document.querySelectorAll('.speed-btn')[idx].classList.add('active');
 
   const badge  = document.getElementById('simBadge');
   const revert = document.getElementById('revertBtn');
-  if (x === 1 && (simNow() - _simBaselineReal === Date.now() - _simBaselineReal)) {
+  if (x === 1 && Math.abs(_simOffset) < 1000) {
     badge.classList.remove('visible');
     revert.disabled = true;
   } else {
@@ -1226,6 +1308,7 @@ function setSpeed(x) {
     revert.disabled = false;
   }
 
+  // Force immediate redraw
   lastSec = -1;
   lastStructureKey = '';
 }
@@ -1233,8 +1316,8 @@ function setSpeed(x) {
 function revertSim() {
   _simStartVirtual = Date.now();
   _simStartReal    = Date.now();
-  _simBaselineReal = Date.now();
   _simSpeed        = 1;
+  _simOffset       = 0;
 
   document.getElementById('simSpeedLabel').textContent = '1×';
   document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
@@ -1247,6 +1330,19 @@ function revertSim() {
   lastStructureKey = '';
 }
 
+function toggleDebugPanel() {
+  const panel = document.getElementById('debugPanel');
+  panel.classList.toggle('visible');
+  const btn = document.getElementById('btnDebug');
+  if (panel.classList.contains('visible')) {
+    btn.classList.add('active');
+    btn.textContent = 'Debug Panel ✕';
+  } else {
+    btn.classList.remove('active');
+    btn.textContent = 'Debug Panel';
+  }
+}
+
 function toggleDebug() {
   const body = document.getElementById('debugBody');
   const btn  = document.getElementById('collapseBtn');
@@ -1255,14 +1351,8 @@ function toggleDebug() {
   btn.textContent = collapsed ? '▾' : '▸';
 }
 
-function toggleDebugPanel() {
-  const panel = document.getElementById('debugPanel');
-  const isHidden = panel.style.display === 'none' || panel.style.display === '';
-  panel.style.display = isHidden ? 'block' : 'none';
-}
-
 /* ═══════════════════════════════
-   HELPERS
+   HELPERS (use simNow() everywhere)
 ═══════════════════════════════ */
 let activeFilter = 'all';
 
@@ -1276,8 +1366,7 @@ function setFilter(f) {
 
 function padZ(n, w=2) { return String(Math.floor(n)).padStart(w,'0'); }
 
-function getNewYearUTC(offsetHours) {
-  const t = simNow();
+function getNewYearUTC(offsetHours, t = simNow()) {
   const now = new Date(t);
   const y = now.getUTCFullYear();
   for (let yr = y; yr <= y + 1; yr++) {
@@ -1285,6 +1374,14 @@ function getNewYearUTC(offsetHours) {
     if (ts > t) return { ts, year: yr };
   }
   return { ts: Date.UTC(y + 1, 0, 1, 0, 0, 0) - offsetHours * 3600000, year: y + 1 };
+}
+
+function getNewYearUTCForYear(offsetHours, year) {
+  return Date.UTC(year, 0, 1, 0, 0, 0) - offsetHours * 3600000;
+}
+
+function getActiveNewYearYear(now) {
+  return Math.min(...ZONES.map(z => getNewYearUTC(z.utcOffset, now).year));
 }
 
 function formatCountdown(ms) {
@@ -1324,23 +1421,6 @@ function getDayOfYear(date) {
   return Math.floor((date - start) / 86400000);
 }
 
-/* ── Seasonal Calculation Logic ── */
-function getSeasonAndPhase(localDateObj, hours) {
-  const month = localDateObj.getUTCMonth(); // 0 - 11
-  let season = '🌸 Spring';
-  if (month >= 2 && month <= 4)       season = '🌸 Spring';
-  else if (month >= 5 && month <= 7)  season = '☀️ Summer';
-  else if (month >= 8 && month <= 10) season = '🍁 Autumn';
-  else                                season = '❄️ Winter';
-
-  let timePhase = '🌙 Night';
-  if (hours >= 6 && hours < 12)       timePhase = '☀ Morning';
-  else if (hours >= 12 && hours < 17) timePhase = '☀ Afternoon';
-  else if (hours >= 17 && hours < 21) timePhase = '🌇 Evening';
-
-  return `${season} · ${timePhase}`;
-}
-
 /* ═══════════════════════════════
    HEADER UPDATE
 ═══════════════════════════════ */
@@ -1360,10 +1440,11 @@ function updateHeader() {
   const epoch = Math.floor(t / 86400000);
   const week  = getISOWeek(now);
   const doy   = getDayOfYear(now);
+  const daysInYear = (Date.UTC(now.getUTCFullYear() + 1, 0, 1) - Date.UTC(now.getUTCFullYear(), 0, 1)) / 86400000;
   document.getElementById('teleUnix').textContent  = unix.toLocaleString();
   document.getElementById('teleEpoch').textContent = epoch.toLocaleString();
   document.getElementById('teleWeek').textContent  = 'W' + padZ(week);
-  document.getElementById('teleDoy').textContent   = doy + ' / 365';
+  document.getElementById('teleDoy').textContent   = doy + ' / ' + daysInYear;
 
   // Year progress
   const y   = now.getUTCFullYear();
@@ -1374,19 +1455,14 @@ function updateHeader() {
   document.getElementById('progressPct').textContent   = pct.toFixed(4) + '% elapsed';
   document.getElementById('progressFill').style.width  = pct + '%';
 
-  // Sim offset display (Freeze exactly at +0s if speed is 1x)
-  if (_simSpeed === 1) {
-    document.getElementById('simOffsetVal').textContent = '+0s';
-  } else {
-    const offsetMs  = simNow() - _simBaselineReal;
-    const offsetSec = Math.floor(offsetMs / 1000);
-    let offsetStr;
-    if (Math.abs(offsetSec) < 60)       offsetStr = `+${offsetSec}s`;
-    else if (Math.abs(offsetSec) < 3600) offsetStr = `+${Math.floor(offsetSec/60)}m ${offsetSec%60}s`;
-    else if (Math.abs(offsetSec) < 86400) offsetStr = `+${Math.floor(offsetSec/3600)}h ${Math.floor((offsetSec%3600)/60)}m`;
-    else                                  offsetStr = `+${Math.floor(offsetSec/86400)}d ${Math.floor((offsetSec%86400)/3600)}h`;
-    document.getElementById('simOffsetVal').textContent = offsetSec === 0 ? '+0s' : offsetStr;
-  }
+  // Sim offset display
+  const offsetMs  = simNow() - Date.now();
+  const offsetSec = Math.floor(offsetMs / 1000);
+  const sign = offsetSec>=0?'+':'-';
+  const absSec=Math.abs(offsetSec);
+  let offsetStr;
+  if (absSec < 60) offsetStr=`${sign}${absSec}s`; else if(absSec<3600) offsetStr=`${sign}${Math.floor(absSec/60)}m ${absSec%60}s`; else if(absSec<86400) offsetStr=`${sign}${Math.floor(absSec/3600)}h ${Math.floor((absSec%3600)/60)}m`; else offsetStr=`${sign}${Math.floor(absSec/86400)}d ${Math.floor((absSec%86400)/3600)}h`;
+  document.getElementById('simOffsetVal').textContent = offsetSec === 0 ? '+0s' : offsetStr;
 }
 
 /* ═══════════════════════════════
@@ -1404,14 +1480,59 @@ function updateHeader() {
 })();
 
 /* ═══════════════════════════════
+   CELEBRATION STATE
+   When a zone hits midnight, hold the hero on "Happy New Year!"
+   for 5 real seconds before advancing to the next zone.
+═══════════════════════════════ */
+let _celebratingOffset = null;   // offset currently in celebration hold
+let _celebrationEndReal = 0;     // real Date.now() when hold expires
+
+/* ═══════════════════════════════
    HERO UPDATE
 ═══════════════════════════════ */
 function updateHero(now, nextOffset) {
+  // ── Celebration hold mode ──
+  if (_celebratingOffset !== null) {
+    const z = ZONES.find(z => z.utcOffset === _celebratingOffset);
+    const ny = z ? getNewYearUTC(z.utcOffset, now) : null;
+    // figure out which year just ticked over = the one that's now in the past for this zone
+    const cycleYear = getActiveNewYearYear(now);
+    const justYear  = z ? (cycleYear > 1 ? cycleYear : new Date(now).getUTCFullYear()) : new Date(now).getUTCFullYear();
+    // Find the year that just rang in for this zone
+    const prevYear = ny ? ny.year - 1 : new Date(now).getUTCFullYear();
+
+    document.getElementById('heroRegion').textContent  = z ? z.name : '—';
+    document.getElementById('heroUtc').textContent     = z ? z.label : '—';
+    document.getElementById('heroCd').textContent      = '🎉';
+    document.getElementById('heroCdSub').textContent   = `Happy New Year ${prevYear + 1}! Next zone in ${Math.max(0, Math.ceil((_celebrationEndReal - Date.now()) / 1000))}s…`;
+    document.getElementById('hLocalTime').textContent  = z ? getLocalTime(z.utcOffset) : '—';
+    document.getElementById('hLocalDate').textContent  = z ? getLocalDate(z.utcOffset) : '—';
+    document.getElementById('hUntilMid').textContent   = '00h 00m';
+    document.getElementById('hSecDay').textContent     = '0';
+    document.getElementById('hPhase').textContent      = '🎆 Celebrating';
+    document.getElementById('hMsLeft').textContent     = '0';
+
+    // Also update the eyebrow label
+    const eyebrow = document.querySelector('.hero-eyebrow');
+    if (eyebrow && !eyebrow.dataset.orig) eyebrow.dataset.orig = eyebrow.innerHTML;
+    if (eyebrow) eyebrow.innerHTML = `<span class="hero-eyebrow-dot"></span>Happy New Year!`;
+    return;
+  }
+
+  // Restore eyebrow if coming out of celebration
+  const eyebrow = document.querySelector('.hero-eyebrow');
+  if (eyebrow && eyebrow.dataset.orig) {
+    eyebrow.innerHTML = eyebrow.dataset.orig;
+    delete eyebrow.dataset.orig;
+  }
+
+  // ── Normal next-up mode ──
   if (nextOffset === null) return;
   const z  = ZONES.find(z => z.utcOffset === nextOffset);
   if (!z) return;
-  const d  = getCardData(z, now);
-  const ny = getNewYearUTC(z.utcOffset);
+  const cycleYear = getActiveNewYearYear(now);
+  const d  = getCardData(z, now, cycleYear);
+  const ny = getNewYearUTC(z.utcOffset, now);
   const msLeft = ny.ts - now;
 
   const totalSec = Math.floor(msLeft / 1000);
@@ -1437,21 +1558,28 @@ function updateHero(now, nextOffset) {
   document.getElementById('hMsLeft').textContent     = msLeft.toLocaleString();
 }
 
-function getCardData(z, now) {
-  const ny         = getNewYearUTC(z.utcOffset);
+
+function getCardData(z, now, cycleYear = getActiveNewYearYear(now)) {
+  const ny         = getNewYearUTC(z.utcOffset, now);
   const msLeft     = ny.ts - now;
-  const celebrated = msLeft <= 0;
+  const celebrated = getNewYearUTCForYear(z.utcOffset, cycleYear) <= now;
   const localD     = new Date(now + z.utcOffset * 3600000);
   const lh         = localD.getUTCHours();
   const lm         = localD.getUTCMinutes();
   const ls         = localD.getUTCSeconds();
   const minsUntilMid = ((24*60) - (lh*60 + lm)) % (24*60);
+  // Jan 1 = month 0, day 1. Jan 2+ = day >= 2
+  const localMonth = localD.getUTCMonth(); // 0=Jan
+  const localDay   = localD.getUTCDate();  // 1=Jan 1, 2=Jan 2…
+  const isJan1     = celebrated && localMonth === 0 && localDay === 1;
+  const isFinalMinute = !celebrated && msLeft > 0 && msLeft <= 60000;
   return {
-    ny, msLeft, celebrated,
+    ny, msLeft, celebrated, celebratedYear: cycleYear,
+    isJan1, isFinalMinute,
     localTime : getLocalTime(z.utcOffset),
     localDate : getLocalDate(z.utcOffset),
     countdown : celebrated ? null : formatCountdown(msLeft),
-    phase     : getSeasonAndPhase(localD, lh),
+    phase     : lh>=6&&lh<12 ? '☀ Morning' : lh>=12&&lh<17 ? '☀ Afternoon' : lh>=17&&lh<21 ? '🌇 Evening' : '🌙 Night',
     hUntilMid : Math.floor(minsUntilMid/60),
     minUntilMid: minsUntilMid%60,
     secInDay  : lh*3600 + lm*60 + ls,
@@ -1459,17 +1587,21 @@ function getCardData(z, now) {
 }
 
 /* ═══════════════════════════════
-   CARD RENDER
+   CARD RENDER — full DOM rebuild only when structure changes
 ═══════════════════════════════ */
 let lastStructureKey = '';
 
 function rebuildCards(now, search, nextOffset) {
   const grid = document.getElementById('zonesGrid');
   const cards = [];
+  const cycleYear = getActiveNewYearYear(now);
 
   ZONES.forEach(z => {
-    const d = getCardData(z, now);
-    const isNext = !d.celebrated && z.utcOffset === nextOffset;
+    const d = getCardData(z, now, cycleYear);
+    // During celebration hold, treat the celebrating zone as "next" so it stays next-styled
+    const isNext = _celebratingOffset !== null
+      ? z.utcOffset === _celebratingOffset
+      : (!d.celebrated && z.utcOffset === nextOffset);
     const isSoon = !d.celebrated && d.msLeft > 0 && d.msLeft <= 3600000;
 
     if (search && !z.name.toLowerCase().includes(search) && !z.label.toLowerCase().includes(search)) return;
@@ -1481,11 +1613,14 @@ function rebuildCards(now, search, nextOffset) {
     if (d.celebrated) {
       stateClass   = 'state-done';
       sparkleColor = 'rgba(45,214,114,A)';
-      badgeHtml    = `<span class="badge badge-done cd-badge">🎉 Happy New Year ${d.ny.year}!</span>`;
+      // Jan 1 only → Happy New Year. Jan 2+ → normal countdown to next NY
+      badgeHtml = d.isJan1
+        ? `<span class="badge badge-done cd-badge">🎉 Happy New Year ${d.celebratedYear}!</span>`
+        : `<span class="badge badge-done cd-badge">🎉 <span class="cd-text">${formatCountdown(d.ny.ts - now) ?? ''}</span> to next</span>`;
     } else if (isNext) {
       stateClass   = 'state-next';
       sparkleColor = 'rgba(165,160,255,A)';
-      badgeHtml    = `<span class="badge badge-next cd-badge"><span class="pulse-dot"></span><span class="cd-text">${d.countdown}</span></span>`;
+      badgeHtml    = `<span class="badge badge-next cd-badge"><span class="pulse-dot"></span><span class="cd-text">${d.countdown ?? '🎉'}</span></span>`;
     } else if (isSoon) {
       stateClass   = 'state-soon';
       sparkleColor = 'rgba(246,163,36,A)';
@@ -1493,6 +1628,9 @@ function rebuildCards(now, search, nextOffset) {
     } else {
       badgeHtml    = `<span class="badge badge-wait cd-badge"><span class="cd-text">${d.countdown}</span></span>`;
     }
+
+    // Final-minute flash overrides border (not state-done/next/soon class)
+    if (d.isFinalMinute) stateClass += ' state-final';
 
     const safeId = z.label.replace(/[^a-z0-9]/gi,'_');
     cards.push(`
@@ -1527,6 +1665,12 @@ function rebuildCards(now, search, nextOffset) {
       </div>`);
   });
 
+  grid.querySelectorAll('canvas.card-sparkle').forEach(cvs => {
+    const id = cardParticles.get(cvs);
+    if (id) cancelAnimationFrame(id);
+    cardParticles.delete(cvs);
+  });
+
   grid.innerHTML = cards.length
     ? cards.join('')
     : '<div class="empty-msg">No time zones match your search or filter.</div>';
@@ -1537,16 +1681,24 @@ function rebuildCards(now, search, nextOffset) {
     const cvs = card.querySelector('canvas.card-sparkle');
     if (cvs) initCardSparkle(cvs, color);
   });
+
+  // Run a patch pass to set flash classes and toast on freshly built cards
+  patchCards(now, nextOffset);
 }
 
+/* patch only the text nodes that change every second — no DOM rebuild */
 function patchCards(now, nextOffset) {
   const cards = document.querySelectorAll('.zone-card[data-offset]');
+  const cycleYear = getActiveNewYearYear(now);
+
+  // Track if any zone is in its final minute for the alert toast
+  let alertZone = null, alertSecs = Infinity;
+
   cards.forEach(card => {
     const offset = parseFloat(card.dataset.offset);
     const z = ZONES.find(z => z.utcOffset === offset);
     if (!z) return;
-    const d = getCardData(z, now);
-
+    const d = getCardData(z, now, cycleYear);
     const setT = (sel, val) => { const el = card.querySelector(sel); if (el) el.textContent = val; };
 
     setT('.cd-time',  d.localTime);
@@ -1556,27 +1708,57 @@ function patchCards(now, nextOffset) {
     setT('.cd-phase', d.phase);
 
     const cdText = card.querySelector('.cd-text');
-    if (cdText && d.countdown) cdText.textContent = d.countdown;
+    if (cdText) {
+      if (d.celebrated && !d.isJan1) {
+        // Jan 2+: show countdown to next new year
+        cdText.textContent = formatCountdown(d.ny.ts - now) ?? '';
+      } else if (d.countdown) {
+        cdText.textContent = d.countdown;
+      }
+    }
+
+    // Toggle flash class without DOM rebuild
+    if (d.isFinalMinute) {
+      card.classList.add('state-final');
+      const secsLeft = Math.ceil(d.msLeft / 1000);
+      if (secsLeft < alertSecs) { alertSecs = secsLeft; alertZone = z; }
+    } else {
+      card.classList.remove('state-final');
+    }
   });
+
+  // Update alert toast
+  const toast = document.getElementById('finalAlert');
+  if (alertZone && alertSecs > 0) {
+    document.getElementById('finalAlertName').textContent = alertZone.name.split(',')[0];
+    document.getElementById('finalAlertSecs').textContent = alertSecs;
+    toast.classList.add('visible');
+  } else {
+    toast.classList.remove('visible');
+  }
 }
 
 function renderCards() {
   const now    = simNow();
   const search = document.getElementById('searchInput').value.toLowerCase().trim();
 
+  // Find the true next zone (ignoring celebration hold for structure key)
   let nextOffset = null, nextTs = Infinity;
   ZONES.forEach(z => {
-    const ny = getNewYearUTC(z.utcOffset);
+    const ny = getNewYearUTC(z.utcOffset, now);
     if (ny.ts > now && ny.ts < nextTs) { nextTs = ny.ts; nextOffset = z.utcOffset; }
   });
 
-  updateHero(now, nextOffset);
+  // During celebration hold, hero shows the celebrating zone
+  updateHero(now, _celebratingOffset !== null ? _celebratingOffset : nextOffset);
 
+  // Count states
   let cDone=0, cSoon=0, cNext=0, cWait=0;
+  const cycleYear = getActiveNewYearYear(now);
   ZONES.forEach(z => {
-    const ny = getNewYearUTC(z.utcOffset);
+    const ny = getNewYearUTC(z.utcOffset, now);
     const msLeft = ny.ts - now;
-    const celebrated = msLeft <= 0;
+    const celebrated = getNewYearUTCForYear(z.utcOffset, cycleYear) <= now;
     const isNext = !celebrated && z.utcOffset === nextOffset;
     const isSoon = !celebrated && msLeft > 0 && msLeft <= 3600000;
     if (celebrated) cDone++;
@@ -1587,8 +1769,7 @@ function renderCards() {
 
   const structKey = ZONES
     .filter(z => {
-      const d = getCardData(z, now);
-      const isNext = !d.celebrated && z.utcOffset === nextOffset;
+      const d = getCardData(z, now, cycleYear);
       const isSoon = !d.celebrated && d.msLeft > 0 && d.msLeft <= 3600000;
       if (search && !z.name.toLowerCase().includes(search) && !z.label.toLowerCase().includes(search)) return false;
       if (activeFilter === 'done'    && !d.celebrated) return false;
@@ -1597,11 +1778,13 @@ function renderCards() {
       return true;
     })
     .map(z => {
-      const d = getCardData(z, now);
-      const isNext = !d.celebrated && z.utcOffset === nextOffset;
+      const d = getCardData(z, now, cycleYear);
+      const isNext = _celebratingOffset !== null
+        ? z.utcOffset === _celebratingOffset
+        : (!d.celebrated && z.utcOffset === nextOffset);
       const isSoon = !d.celebrated && d.msLeft > 0 && d.msLeft <= 3600000;
-      return `${z.label}:${d.celebrated?'done':isNext?'next':isSoon?'soon':'wait'}`;
-    }).join('|');
+      return `${z.label}:${d.celebrated?'done':isNext?'next':isSoon?'soon':'wait'}:${d.isFinalMinute?'f':''}:${d.isJan1?'j1':''}`;
+    }).join('|') + `|cel:${_celebratingOffset}`;
 
   if (structKey !== lastStructureKey) {
     lastStructureKey = structKey;
@@ -1622,23 +1805,44 @@ function renderCards() {
 }
 
 /* ═══════════════════════════════
-   LOOP
+   LOOP — header + hero every frame, cards every second
 ═══════════════════════════════ */
 let lastSec = -1;
 let _nextOffset = null;
+let _prevNextOffset = null;  // track transitions
 
 function loop() {
   const now = simNow();
   updateHeader();
 
+  // Find next zone
   let nextTs = Infinity;
   _nextOffset = null;
   ZONES.forEach(z => {
-    const ny = getNewYearUTC(z.utcOffset);
+    const ny = getNewYearUTC(z.utcOffset, now);
     if (ny.ts > now && ny.ts < nextTs) { nextTs = ny.ts; _nextOffset = z.utcOffset; }
   });
 
-  updateHero(now, _nextOffset);
+  // ── Detect a NEW zone transition (next zone changed because one just passed midnight) ──
+  if (_prevNextOffset !== null &&
+      _nextOffset !== _prevNextOffset &&
+      _celebratingOffset === null) {
+    // The zone that WAS next has just passed midnight — celebrate it
+    _celebratingOffset  = _prevNextOffset;
+    _celebrationEndReal = Date.now() + 5000;  // 5 real seconds
+    fireworkShow.start();
+    lastStructureKey = '';  // force card rebuild
+  }
+
+  // Check if celebration hold has expired
+  if (_celebratingOffset !== null && Date.now() >= _celebrationEndReal) {
+    _celebratingOffset = null;
+    lastStructureKey   = '';  // force rebuild again
+  }
+
+  _prevNextOffset = _nextOffset;
+
+  updateHero(now, _celebratingOffset !== null ? _celebratingOffset : _nextOffset);
 
   const s = Math.floor(now / 1000);
   if (s !== lastSec) { lastSec = s; renderCards(); }
