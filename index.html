@@ -803,11 +803,13 @@ body {
   50%  { box-shadow: 0 0 0 1px rgba(255,255,255,0.25), inset 0 0 30px rgba(255,255,255,0.06); background: rgba(255,255,255,0.04); }
   100% { box-shadow: none; background: var(--bg-card); }
 }
-.zone-card.state-final {
+.zone-card.state-final,
+.hero-banner.state-final {
   animation: cardFlash 1s ease-in-out infinite;
   border-color: rgba(255,255,255,0.2) !important;
 }
-.zone-card.state-final::before {
+.zone-card.state-final::before,
+.hero-banner.state-final::before {
   content: '';
   position: absolute; inset: 0;
   background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 60%);
@@ -827,7 +829,8 @@ body {
   font-size: 12px; color: var(--text-2);
   backdrop-filter: blur(16px);
   box-shadow: 0 4px 24px rgba(0,0,0,0.5);
-  white-space: nowrap;
+  max-width: min(90vw, 480px);
+  text-align: center;
   opacity: 0; pointer-events: none;
   transition: opacity 0.3s;
 }
@@ -1330,7 +1333,13 @@ function revertSim() {
   lastStructureKey = '';
 }
 
+let _debugUnlocked = false;
 function toggleDebugPanel() {
+  if (!_debugUnlocked) {
+    const pw = prompt('Enter debug password:');
+    if (pw !== '123456') return;
+    _debugUnlocked = true;
+  }
   const panel = document.getElementById('debugPanel');
   panel.classList.toggle('visible');
   const btn = document.getElementById('btnDebug');
@@ -1386,7 +1395,7 @@ function getActiveNewYearYear(now) {
 
 function formatCountdown(ms) {
   if (ms <= 0) return null;
-  const s  = Math.floor(ms / 1000);
+  const s  = Math.ceil(ms / 1000);
   const d  = Math.floor(s / 86400);
   const h  = Math.floor((s % 86400) / 3600);
   const m  = Math.floor((s % 3600) / 60);
@@ -1504,7 +1513,7 @@ function updateHero(now, nextOffset) {
     document.getElementById('heroRegion').textContent  = z ? z.name : '—';
     document.getElementById('heroUtc').textContent     = z ? z.label : '—';
     document.getElementById('heroCd').textContent      = '🎉';
-    document.getElementById('heroCdSub').textContent   = `Happy New Year ${prevYear + 1}! Next zone in ${Math.max(0, Math.ceil((_celebrationEndReal - Date.now()) / 1000))}s…`;
+    document.getElementById('heroCdSub').textContent   = `Happy New Year ${prevYear + 1}! Next zone in ${Math.max(0, Math.ceil((_celebrationEndReal - Date.now()) / 1000 * _simSpeed))}s…`;
     document.getElementById('hLocalTime').textContent  = z ? getLocalTime(z.utcOffset) : '—';
     document.getElementById('hLocalDate').textContent  = z ? getLocalDate(z.utcOffset) : '—';
     document.getElementById('hUntilMid').textContent   = '00h 00m';
@@ -1535,7 +1544,7 @@ function updateHero(now, nextOffset) {
   const ny = getNewYearUTC(z.utcOffset, now);
   const msLeft = ny.ts - now;
 
-  const totalSec = Math.floor(msLeft / 1000);
+  const totalSec = Math.ceil(msLeft / 1000);
   const days  = Math.floor(totalSec / 86400);
   const hours = Math.floor((totalSec % 86400) / 3600);
   const mins  = Math.floor((totalSec % 3600) / 60);
@@ -1602,7 +1611,7 @@ function rebuildCards(now, search, nextOffset) {
     const isNext = _celebratingOffset !== null
       ? z.utcOffset === _celebratingOffset
       : (!d.celebrated && z.utcOffset === nextOffset);
-    const isSoon = !d.celebrated && d.msLeft > 0 && d.msLeft <= 3600000;
+    const isSoon = !d.celebrated && !isNext && d.msLeft > 0 && d.msLeft <= 3600000;
 
     if (search && !z.name.toLowerCase().includes(search) && !z.label.toLowerCase().includes(search)) return;
     if (activeFilter === 'done'    && !d.celebrated) return;
@@ -1727,10 +1736,15 @@ function patchCards(now, nextOffset) {
     }
   });
 
+  // Flash hero banner when next zone is in final minute
+  const hero = document.getElementById('heroBanner');
+  if (alertZone && alertSecs > 0) hero.classList.add('state-final');
+  else hero.classList.remove('state-final');
+
   // Update alert toast
   const toast = document.getElementById('finalAlert');
   if (alertZone && alertSecs > 0) {
-    document.getElementById('finalAlertName').textContent = alertZone.name.split(',')[0];
+    document.getElementById('finalAlertName').textContent = alertZone.name;
     document.getElementById('finalAlertSecs').textContent = alertSecs;
     toast.classList.add('visible');
   } else {
@@ -1760,7 +1774,7 @@ function renderCards() {
     const msLeft = ny.ts - now;
     const celebrated = getNewYearUTCForYear(z.utcOffset, cycleYear) <= now;
     const isNext = !celebrated && z.utcOffset === nextOffset;
-    const isSoon = !celebrated && msLeft > 0 && msLeft <= 3600000;
+    const isSoon = !celebrated && !isNext && msLeft > 0 && msLeft <= 3600000;
     if (celebrated) cDone++;
     else if (isNext) cNext++;
     else if (isSoon) cSoon++;
@@ -1770,7 +1784,8 @@ function renderCards() {
   const structKey = ZONES
     .filter(z => {
       const d = getCardData(z, now, cycleYear);
-      const isSoon = !d.celebrated && d.msLeft > 0 && d.msLeft <= 3600000;
+      const isNext = _celebratingOffset !== null ? z.utcOffset === _celebratingOffset : (!d.celebrated && z.utcOffset === nextOffset);
+      const isSoon = !d.celebrated && !isNext && d.msLeft > 0 && d.msLeft <= 3600000;
       if (search && !z.name.toLowerCase().includes(search) && !z.label.toLowerCase().includes(search)) return false;
       if (activeFilter === 'done'    && !d.celebrated) return false;
       if (activeFilter === 'pending' && d.celebrated)  return false;
@@ -1782,7 +1797,7 @@ function renderCards() {
       const isNext = _celebratingOffset !== null
         ? z.utcOffset === _celebratingOffset
         : (!d.celebrated && z.utcOffset === nextOffset);
-      const isSoon = !d.celebrated && d.msLeft > 0 && d.msLeft <= 3600000;
+      const isSoon = !d.celebrated && !isNext && d.msLeft > 0 && d.msLeft <= 3600000;
       return `${z.label}:${d.celebrated?'done':isNext?'next':isSoon?'soon':'wait'}:${d.isFinalMinute?'f':''}:${d.isJan1?'j1':''}`;
     }).join('|') + `|cel:${_celebratingOffset}`;
 
@@ -1848,6 +1863,10 @@ function loop() {
   if (s !== lastSec) { lastSec = s; renderCards(); }
   requestAnimationFrame(loop);
 }
+loop();
+</script>
+</body>
+</html>
 loop();
 </script>
 </body>
